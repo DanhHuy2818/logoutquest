@@ -384,8 +384,8 @@ local function stroke(obj, color, t)
 end
 
 local panel = Instance.new("Frame", gui)
-panel.Size = UDim2.new(0, 205, 0, 10)
-panel.Position = UDim2.new(1, -215, 0, 10)
+panel.Size = UDim2.new(0, 188, 0, 10)
+panel.Position = UDim2.new(1, -202, 0, 10)
 panel.BackgroundColor3 = Color3.fromRGB(8, 8, 16)
 panel.BackgroundTransparency = 0.05
 panel.BorderSizePixel = 0
@@ -395,8 +395,11 @@ panel.ClipsDescendants = true
 corner(panel, 8)
 stroke(panel, Color3.fromRGB(255, 150, 0), 2)
 
+local panelScale = Instance.new("UIScale", panel)
+panelScale.Scale = 0.86
+
 local header = Instance.new("Frame", panel)
-header.Size = UDim2.new(1, 0, 0, 24)
+header.Size = UDim2.new(1, 0, 0, 22)
 header.BackgroundColor3 = Color3.fromRGB(100, 50, 0)
 header.BorderSizePixel = 0
 corner(header, 8)
@@ -405,15 +408,15 @@ local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1, -28, 1, 0)
 title.Position = UDim2.new(0, 6, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BF Logout v14 " .. (AUTOKICK == "true" and "[KICK]" or "[TEST]")
+title.Text = "BFQL v14 " .. (AUTOKICK == "true" and "[K]" or "[T]")
 title.TextColor3 = Color3.fromRGB(255, 220, 90)
 title.Font = Enum.Font.GothamBold
 title.TextScaled = true
 title.TextXAlignment = Enum.TextXAlignment.Left
 
 local closeBtn = Instance.new("TextButton", header)
-closeBtn.Size = UDim2.new(0, 19, 0, 19)
-closeBtn.Position = UDim2.new(1, -22, 0, 3)
+closeBtn.Size = UDim2.new(0, 18, 0, 18)
+closeBtn.Position = UDim2.new(1, -21, 0, 2)
 closeBtn.BackgroundColor3 = Color3.fromRGB(170, 25, 25)
 closeBtn.Text = "X"
 closeBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -421,16 +424,16 @@ closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextScaled = true
 corner(closeBtn, 4)
 
-local rowY = 28
+local rowY = 25
 local function row(label, color)
     local f = Instance.new("Frame", panel)
-    f.Size = UDim2.new(1, -8, 0, 16)
+    f.Size = UDim2.new(1, -8, 0, 14)
     f.Position = UDim2.new(0, 4, 0, rowY)
     f.BackgroundTransparency = 1
-    rowY = rowY + 18
+    rowY = rowY + 15
 
     local l = Instance.new("TextLabel", f)
-    l.Size = UDim2.new(0.42, 0, 1, 0)
+    l.Size = UDim2.new(0.38, 0, 1, 0)
     l.BackgroundTransparency = 1
     l.Text = label
     l.TextColor3 = Color3.fromRGB(125, 125, 145)
@@ -439,8 +442,8 @@ local function row(label, color)
     l.TextXAlignment = Enum.TextXAlignment.Left
 
     local v = Instance.new("TextLabel", f)
-    v.Size = UDim2.new(0.58, 0, 1, 0)
-    v.Position = UDim2.new(0.42, 0, 0, 0)
+    v.Size = UDim2.new(0.62, 0, 1, 0)
+    v.Position = UDim2.new(0.38, 0, 0, 0)
     v.BackgroundTransparency = 1
     v.Text = "--"
     v.TextColor3 = color or Color3.new(1, 1, 1)
@@ -456,32 +459,32 @@ local function sep()
     s.Position = UDim2.new(0, 4, 0, rowY)
     s.BackgroundColor3 = Color3.fromRGB(35, 35, 55)
     s.BorderSizePixel = 0
-    rowY = rowY + 4
+    rowY = rowY + 3
 end
 
-local vSrc = row("Data:", Color3.fromRGB(100, 255, 100))
+local vSrc = row("Data", Color3.fromRGB(100, 255, 100))
 sep()
-local vLv = row("Level:", Color3.fromRGB(100, 220, 255))
-local vMile = row("Moc:", Color3.fromRGB(255, 210, 80))
+local vLv = row("Lv", Color3.fromRGB(100, 220, 255))
+local vMile = row("Moc", Color3.fromRGB(255, 210, 80))
 sep()
-local v2x = row("2x:", Color3.fromRGB(255, 180, 80))
-local vBoost = row("Boost:", Color3.fromRGB(255, 210, 80))
-local vTime = row("Con:", Color3.fromRGB(220, 220, 160))
+local v2x = row("2x", Color3.fromRGB(255, 180, 80))
+local vBoost = row("Booster", Color3.fromRGB(255, 210, 80))
+local vTime = row("Con", Color3.fromRGB(220, 220, 160))
 sep()
-local vQuest = row("Quest:", Color3.fromRGB(150, 255, 150))
-local vGain = row("Gain:", Color3.fromRGB(150, 255, 150))
-local vNeed = row("Need:", Color3.fromRGB(255, 210, 90))
-local vAfter = row("Sau:", Color3.fromRGB(200, 200, 255))
+local vQuest = row("Quest", Color3.fromRGB(150, 255, 150))
+local vGain = row("Gain", Color3.fromRGB(150, 255, 150))
+local vNeed = row("Need", Color3.fromRGB(255, 210, 90))
+local vAfter = row("Sau", Color3.fromRGB(200, 200, 255))
 sep()
-local vKick = row("Kick:", Color3.fromRGB(230, 230, 230))
+local vKick = row("Kick", Color3.fromRGB(230, 230, 230))
 
 local barBg = Instance.new("Frame", panel)
-barBg.Size = UDim2.new(1, -8, 0, 12)
+barBg.Size = UDim2.new(1, -8, 0, 10)
 barBg.Position = UDim2.new(0, 4, 0, rowY + 2)
 barBg.BackgroundColor3 = Color3.fromRGB(18, 18, 30)
 barBg.BorderSizePixel = 0
 corner(barBg, 4)
-rowY = rowY + 18
+rowY = rowY + 15
 
 local barFill = Instance.new("Frame", barBg)
 barFill.Size = UDim2.new(0, 0, 1, 0)
@@ -499,12 +502,12 @@ barText.TextScaled = true
 barText.ZIndex = 3
 
 local alertBox = Instance.new("Frame", panel)
-alertBox.Size = UDim2.new(1, -8, 0, 36)
+alertBox.Size = UDim2.new(1, -8, 0, 30)
 alertBox.Position = UDim2.new(0, 4, 0, rowY)
 alertBox.BackgroundColor3 = Color3.fromRGB(14, 14, 26)
 alertBox.BorderSizePixel = 0
 corner(alertBox, 6)
-rowY = rowY + 40
+rowY = rowY + 33
 
 local alertText = Instance.new("TextLabel", alertBox)
 alertText.Size = UDim2.new(1, -6, 1, -2)
@@ -517,7 +520,7 @@ alertText.TextScaled = true
 alertText.TextWrapped = true
 
 local toggleBtn = Instance.new("TextButton", panel)
-toggleBtn.Size = UDim2.new(1, -8, 0, 28)
+toggleBtn.Size = UDim2.new(1, -8, 0, 24)
 toggleBtn.Position = UDim2.new(0, 4, 0, rowY)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 60)
 toggleBtn.Text = "Start"
@@ -525,13 +528,13 @@ toggleBtn.TextColor3 = Color3.new(1, 1, 1)
 toggleBtn.Font = Enum.Font.GothamBold
 toggleBtn.TextScaled = true
 corner(toggleBtn, 7)
-rowY = rowY + 32
+rowY = rowY + 27
 
-panel.Size = UDim2.new(0, 205, 0, rowY + 4)
+panel.Size = UDim2.new(0, 188, 0, rowY + 4)
 
 local resize = Instance.new("TextButton", panel)
-resize.Size = UDim2.new(0, 20, 0, 20)
-resize.Position = UDim2.new(1, -20, 1, -20)
+resize.Size = UDim2.new(0, 18, 0, 18)
+resize.Position = UDim2.new(1, -18, 1, -18)
 resize.BackgroundColor3 = Color3.fromRGB(255, 150, 0)
 resize.Text = ""
 resize.ZIndex = 10
@@ -539,14 +542,14 @@ corner(resize, 4)
 
 local resizing = false
 local resizeStartMouse = nil
-local resizeStartSize = nil
+local resizeStartScale = nil
 local resizeInput = nil
 local loopConn = nil
 
 local function beginResize(pos, input)
     resizing = true
     resizeStartMouse = pos
-    resizeStartSize = Vector2.new(panel.AbsoluteSize.X, panel.AbsoluteSize.Y)
+    resizeStartScale = panelScale.Scale
     resizeInput = input
 end
 
@@ -566,10 +569,10 @@ UIS.InputChanged:Connect(function(input)
         local pos = input.UserInputType == Enum.UserInputType.MouseMovement
             and UIS:GetMouseLocation()
             or Vector2.new(input.Position.X, input.Position.Y)
-        panel.Size = UDim2.new(
-            0, math.clamp(resizeStartSize.X + (pos.X - resizeStartMouse.X), 165, 460),
-            0, math.clamp(resizeStartSize.Y + (pos.Y - resizeStartMouse.Y), 190, 640)
-        )
+        local dx = (pos.X - resizeStartMouse.X) / 220
+        local dy = (pos.Y - resizeStartMouse.Y) / 280
+        local delta = math.abs(dx) > math.abs(dy) and dx or dy
+        panelScale.Scale = math.clamp(resizeStartScale + delta, 0.55, 1.35)
     end
 end)
 
