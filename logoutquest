@@ -1,0 +1,576 @@
+-- Blox Fruits Quest Logout v12
+-- Path cứng đã xác nhận 100%:
+--   Level  : LP.Data.Level (IntValue)
+--   EXP    : PlayerGui.Main.Level.Exp (object có .Text)
+--   Quest  : PlayerGui.Main.Quest.Container.QuestReward.Title (.Text multiline)
+
+local AUTOSTART = "false"
+local AUTOKICK  = "false"
+
+local Players    = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LP         = Players.LocalPlayer
+
+local MILESTONES = {
+    1,5,10,15,20,30,40,50,60,75,90,100,
+    120,130,150,175,190,200,210,225,250,
+    275,300,325,350,375,400,425,450,475,
+    500,525,550,575,600,625,650,675,700,
+    725,750,775,800,825,850,875,900,925,
+    950,975,1000,1025,1050,1075,1100,
+    1125,1150,1175,1200,1225,1250,1275,
+    1300,1325,1350,1375,1400,1425,1450,
+    1475,1500,1525,1550,1575,1600,1625,
+    1650,1675,1700,1725,1750,1775,1800,
+    1825,1850,1875,1900,1925,1950,1975,
+    2000,2025,2050,2075,2100,2125,2150,
+    2175,2200,2225,2250,2275,2300,2325,
+    2350,2375,2400,2425,2450,2475,2500,
+    2525,2550,2575,2600,2625,2650,
+    2675,2700,2725,2750,2775,2800,
+}
+
+local function nextMilestone(lv)
+    for _, m in ipairs(MILESTONES) do
+        if m > lv then return m end
+    end
+    return nil
+end
+
+local function parseNum(s)
+    if not s then return nil end
+    return tonumber(s:gsub("[,%s]",""))
+end
+
+local function expNeeded(L)
+    return math.floor(1.73 * (L ^ 1.726))
+end
+
+local DATA = {
+    level=nil, expCur=nil, expMax=nil,
+    questExp=nil, is2x=false, remain2x=0,
+}
+
+-- ════════════════════════════════════════════
+-- 1. LEVEL — LP.Data.Level (IntValue, confirmed)
+-- ════════════════════════════════════════════
+local lvConn, lvDone = nil, false
+
+local function setupLevel()
+    if lvDone then return end
+    local d = LP:FindFirstChild("Data")
+    if not d then return end
+    local obj = d:FindFirstChild("Level")
+    if not obj then return end
+    local function apply(v)
+        v = tonumber(v)
+        if v and v>=1 and v<=2800 then DATA.level=v end
+    end
+    apply(obj.Value)
+    lvConn = obj.Changed:Connect(apply)
+    lvDone = true
+    print("[v12] ✅ Level:",obj.Value)
+end
+
+-- ════════════════════════════════════════════
+-- 2. EXP — PlayerGui.Main.Level.Exp
+-- Text: "421,821/503,737 (2x ends 0:03:38:35)"
+-- Object này KHÔNG phải TextLabel thông thường
+-- → dùng GetPropertyChangedSignal("Text") trực tiếp
+-- ════════════════════════════════════════════
+local expConn, expDone = nil, false
+local lastExpRetry = 0
+
+local function parse2xSec(txt)
+    local d,h,m,s = txt:match("(%d+):(%d+):(%d+):(%d+)")
+    if d then return tonumber(d)*86400+tonumber(h)*3600+tonumber(m)*60+tonumber(s) end
+    local h2,m2,s2 = txt:match("(%d+):(%d+):(%d+)")
+    if h2 then return tonumber(h2)*3600+tonumber(m2)*60+tonumber(s2) end
+    local m3,s3 = txt:match("(%d+):(%d+)")
+    if m3 then return tonumber(m3)*60+tonumber(s3) end
+    return 0
+end
+
+local function applyExpText(txt)
+    if not txt or txt=="" then return end
+    -- "421,821/503,737 (2x ends 0:03:38:35)"
+    local a,b = txt:match("^([%d,]+)/([%d,]+)")
+    if not a then return end
+    local cur = parseNum(a)
+    local mx  = parseNum(b)
+    if cur and mx and mx>1000 then
+        DATA.expCur = cur
+        DATA.expMax = mx
+    end
+    if txt:lower():find("2x") then
+        DATA.is2x     = true
+        DATA.remain2x = parse2xSec(txt)
+    else
+        DATA.is2x     = false
+        DATA.remain2x = 0
+    end
+end
+
+local function setupExp()
+    if expDone then return end
+    local now = tick()
+    if now - lastExpRetry < 2 then return end
+    lastExpRetry = now
+
+    local pg = LP:FindFirstChildOfClass("PlayerGui")
+    if not pg then return end
+    local main = pg:FindFirstChild("Main")
+    if not main then return end
+    local levelF = main:FindFirstChild("Level")
+    if not levelF then return end
+
+    -- "Exp" là tên object xác nhận từ console
+    local expObj = levelF:FindFirstChild("Exp")
+    if not expObj then
+        print("[v12] ❌ Main.Level.Exp chưa thấy, thử lại...")
+        return
+    end
+
+    -- Đọc text bằng pcall vì không biết class chính xác
+    local ok, txt = pcall(function() return expObj.Text end)
+    if not ok then
+        -- Thử các property khác
+        ok, txt = pcall(function() return expObj.Value end)
+        if ok then txt = tostring(txt) end
+    end
+
+    print("[v12] ✅ Exp obj class:", expObj.ClassName, "| text:", tostring(txt))
+    if txt then applyExpText(tostring(txt)) end
+
+    -- Watch thay đổi
+    if expConn then pcall(function() expConn:Disconnect() end) end
+
+    -- Thử GetPropertyChangedSignal("Text")
+    local watchOk = pcall(function()
+        expConn = expObj:GetPropertyChangedSignal("Text"):Connect(function()
+            local ok2, t = pcall(function() return expObj.Text end)
+            if ok2 and t then applyExpText(t) end
+        end)
+    end)
+
+    if not watchOk then
+        -- Fallback: watch Changed (IntValue/NumberValue)
+        pcall(function()
+            expConn = expObj.Changed:Connect(function(v)
+                local ok2, t = pcall(function() return expObj.Text end)
+                if ok2 and t then applyExpText(t)
+                else applyExpText(tostring(v)) end
+            end)
+        end)
+        print("[v12] Dùng Changed event cho Exp obj")
+    end
+
+    expDone = true
+end
+
+-- ════════════════════════════════════════════
+-- 3. QUEST EXP — Main.Quest.Container.QuestReward.Title
+-- Text: "Reward:\n$7,500\n780,000 Exp."
+-- ════════════════════════════════════════════
+local questConn, questDone = nil, false
+local lastQRetry = 0
+
+local function parseQuestExp(txt)
+    if not txt then return nil end
+    if txt:lower():find("earned") then return nil end
+    local best = nil
+    for raw in txt:gmatch("([%d][%d,]+)%s*[Ee][Xx][Pp]%.?") do
+        local v = parseNum(raw)
+        if v and v>=1000 then
+            if not best or v>best then best=v end
+        end
+    end
+    return best
+end
+
+local function setupQuest()
+    -- Quest label có thể ẩn/hiện, scan mỗi 2s
+    local now = tick()
+    if now - lastQRetry < 2 then return end
+    lastQRetry = now
+
+    local pg = LP:FindFirstChildOfClass("PlayerGui")
+    if not pg then return end
+    local main = pg:FindFirstChild("Main")
+    if not main then return end
+    local quest = main:FindFirstChild("Quest")
+    if not quest then return end
+    local cont = quest:FindFirstChild("Container")
+    if not cont then return end
+    local reward = cont:FindFirstChild("QuestReward")
+    if not reward then return end
+
+    -- Title label đã confirm từ console
+    local titleObj = reward:FindFirstChild("Title")
+    if not titleObj then
+        -- Scan con của reward
+        for _, child in ipairs(reward:GetChildren()) do
+            local ok, txt = pcall(function() return child.Text end)
+            if ok and txt then
+                local v = parseQuestExp(txt)
+                if v then titleObj = child; break end
+            end
+        end
+    end
+
+    if not titleObj then
+        -- Quest panel đang ẩn
+        DATA.questExp = nil
+        questDone = false
+        return
+    end
+
+    -- Đọc ngay
+    local ok, txt = pcall(function() return titleObj.Text end)
+    if ok and txt then
+        DATA.questExp = parseQuestExp(txt)
+    end
+
+    -- Watch
+    if questConn then pcall(function() questConn:Disconnect() end) end
+    pcall(function()
+        questConn = titleObj:GetPropertyChangedSignal("Text"):Connect(function()
+            local ok2, t = pcall(function() return titleObj.Text end)
+            if ok2 then DATA.questExp = parseQuestExp(t) end
+        end)
+    end)
+
+    if DATA.questExp then
+        print("[v12] ✅ Quest EXP:", DATA.questExp)
+        questDone = true
+    else
+        questDone = false
+    end
+end
+
+-- ════════════════════════════════════════════
+-- SIMULATE
+-- ════════════════════════════════════════════
+local function simulate(lv, cur, mx, qe, x2)
+    local add = x2 and qe*2 or qe
+    local rem = cur + add
+    local L, M, i = lv, mx, 0
+    while rem>=M and i<500 do
+        rem=rem-M; L=L+1; M=expNeeded(L); i=i+1
+    end
+    return L
+end
+
+local function doKick()
+    task.wait(0.2)
+    pcall(function() LP:Kick("[QLP v12] Out - sắp vượt mốc!") end)
+end
+
+-- ════════════════════════════════════════════
+-- STATE / DISPLAY
+-- ════════════════════════════════════════════
+local running=false, destroyed=false, loopConn=nil
+local dLevel="--",dMile="--",dCur="--",dMax="--"
+local dPct=0,dQExp="--",dAfter="--"
+local dIs2x=false,d2xTime="--"
+local dSafe=true,dAlert="",dSrc="---",dBlink=false
+
+local function fmt(n)
+    local v=tonumber(n); if not v then return tostring(n) end
+    if v>=1e6 then return string.format("%.2fM",v/1e6)
+    elseif v>=1e3 then return string.format("%.1fK",v/1e3)
+    else return tostring(math.floor(v)) end
+end
+local function fmtT(s)
+    if not s or s<=0 then return "hết" end
+    s=math.floor(s)
+    local h=math.floor(s/3600); local m=math.floor((s%3600)/60); local ss=s%60
+    if h>0 then return string.format("%dh%02dm",h,m)
+    elseif m>0 then return string.format("%dm%02ds",m,ss)
+    else return ss.."s" end
+end
+
+local function checkAndKick()
+    if not running then return end
+    local lv=DATA.level; local cur=DATA.expCur; local mx=DATA.expMax
+    local qe=DATA.questExp; local x2=DATA.is2x
+
+    if lv  then dLevel=tostring(lv) end
+    if cur then dCur=fmt(cur) end
+    if mx  then dMax=fmt(mx) end
+    if cur and mx and mx>0 then dPct=math.clamp(cur/mx,0,1) end
+    dIs2x=x2; d2xTime=x2 and fmtT(DATA.remain2x) or "--"
+
+    if not lv then
+        dSrc="Đang tìm level..."; dAlert="⚠ Chưa đọc Level"; dSafe=true; return
+    end
+
+    local ms=nextMilestone(lv)
+    if not ms then dMile="MAX"; dAlert="✅ Max!"; running=false; return end
+    dMile=tostring(ms)
+
+    -- CHECK 1: level >= mốc
+    if lv>=ms then
+        dSafe=false
+        dAlert=string.format("🚨 Lv%d ≥ mốc %d! CẦN OUT!",lv,ms)
+        dSrc="Live"
+        if AUTOKICK=="true" then running=false; task.spawn(doKick) end
+        return
+    end
+
+    -- CHECK 2: simulate
+    if qe and cur and mx and mx>0 then
+        local after=simulate(lv,cur,mx,qe,x2)
+        dAfter=tostring(after)
+        dQExp=x2 and (fmt(qe).."→"..fmt(qe*2).."(×2)") or fmt(qe)
+        if after>=ms then
+            dSafe=false
+            dAlert=string.format("🚨 Sau quest Lv%d→%d, mốc=%d!",lv,after,ms)
+            dSrc="Simulate"
+            if AUTOKICK=="true" then running=false; task.spawn(doKick) end
+        else
+            dSafe=true; dAlert=""
+            dSrc="✅ OK"
+        end
+    else
+        dQExp="--"; dAfter="--"; dSafe=true; dAlert=""
+        if not expDone then dSrc="Đang tìm EXP..."
+        elseif not qe  then dSrc="Chờ quest..."
+        else dSrc="✅ OK" end
+    end
+end
+
+local function startMonitor()
+    if loopConn then loopConn:Disconnect() end
+    expDone=false; questDone=false
+    lastExpRetry=0; lastQRetry=0
+
+    task.spawn(function()
+        task.wait(0.3)
+        setupLevel()
+        setupExp()
+        setupQuest()
+    end)
+
+    local t0=0
+    loopConn=RunService.Heartbeat:Connect(function()
+        if destroyed or not running then return end
+        checkAndKick()
+        local now=tick()
+        if now-t0>=2 then
+            t0=now
+            if not lvDone  then task.spawn(setupLevel) end
+            if not expDone then task.spawn(setupExp) end
+            task.spawn(setupQuest)  -- luôn chạy vì quest có thể ẩn/hiện
+        end
+    end)
+end
+
+-- ════════════════════════════════════════════
+-- GUI
+-- ════════════════════════════════════════════
+pcall(function()
+    local o=game.CoreGui:FindFirstChild("BFQLv12"); if o then o:Destroy() end
+end)
+
+local gui=Instance.new("ScreenGui")
+gui.Name="BFQLv12"; gui.ResetOnSpawn=false
+gui.IgnoreGuiInset=true; gui.Parent=game.CoreGui
+
+local UIS=game:GetService("UserInputService")
+local function C(p,r) Instance.new("UICorner",p).CornerRadius=UDim.new(0,r or 6) end
+local function St(p,c,t) local s=Instance.new("UIStroke",p);s.Color=c;s.Thickness=t or 1 end
+
+local panel=Instance.new("Frame",gui)
+panel.Size=UDim2.new(0,210,0,10)
+panel.Position=UDim2.new(1,-220,0,10)
+panel.BackgroundColor3=Color3.fromRGB(8,8,16)
+panel.BackgroundTransparency=0.05; panel.BorderSizePixel=0
+panel.Active=true; panel.Draggable=true; panel.ClipsDescendants=true
+C(panel,8); St(panel,Color3.fromRGB(255,150,0))
+
+local hdr=Instance.new("Frame",panel)
+hdr.Size=UDim2.new(1,0,0,24)
+hdr.BackgroundColor3=Color3.fromRGB(100,50,0); hdr.BorderSizePixel=0; C(hdr,8)
+
+local htitle=Instance.new("TextLabel",hdr)
+htitle.Size=UDim2.new(1,-26,1,0); htitle.Position=UDim2.new(0,6,0,0)
+htitle.BackgroundTransparency=1; htitle.TextScaled=true
+htitle.Font=Enum.Font.GothamBold; htitle.TextXAlignment=Enum.TextXAlignment.Left
+htitle.TextColor3=Color3.fromRGB(255,210,80)
+htitle.Text="⚠ Quest Logout v12 "..(AUTOKICK=="true" and "🔴" or "🟡")
+
+local xBtn=Instance.new("TextButton",hdr)
+xBtn.Size=UDim2.new(0,18,0,18); xBtn.Position=UDim2.new(1,-21,0,3)
+xBtn.BackgroundColor3=Color3.fromRGB(180,20,20); xBtn.Text="✕"
+xBtn.TextColor3=Color3.fromRGB(255,255,255); xBtn.TextScaled=true
+xBtn.Font=Enum.Font.GothamBold; C(xBtn,4)
+xBtn.MouseButton1Click:Connect(function()
+    destroyed=true; running=false
+    if loopConn  then loopConn:Disconnect() end
+    if lvConn    then pcall(function() lvConn:Disconnect() end) end
+    if expConn   then pcall(function() expConn:Disconnect() end) end
+    if questConn then pcall(function() questConn:Disconnect() end) end
+    gui:Destroy()
+end)
+
+local rowY=28
+local function mkRow(lbl,vc,h)
+    h=h or 15
+    local f=Instance.new("Frame",panel)
+    f.Size=UDim2.new(1,-8,0,h); f.Position=UDim2.new(0,4,0,rowY)
+    f.BackgroundTransparency=1; rowY=rowY+h+2
+    local lb=Instance.new("TextLabel",f)
+    lb.Size=UDim2.new(0.44,0,1,0); lb.BackgroundTransparency=1
+    lb.TextScaled=true; lb.Font=Enum.Font.Gotham
+    lb.TextXAlignment=Enum.TextXAlignment.Left
+    lb.TextColor3=Color3.fromRGB(100,100,120); lb.Text=lbl
+    local vl=Instance.new("TextLabel",f)
+    vl.Size=UDim2.new(0.56,0,1,0); vl.Position=UDim2.new(0.44,0,0,0)
+    vl.BackgroundTransparency=1; vl.TextScaled=true
+    vl.Font=Enum.Font.GothamBold; vl.TextXAlignment=Enum.TextXAlignment.Left
+    vl.TextColor3=vc or Color3.fromRGB(255,255,255)
+    return vl
+end
+local function mkSep()
+    local s=Instance.new("Frame",panel)
+    s.Size=UDim2.new(1,-8,0,1); s.Position=UDim2.new(0,4,0,rowY)
+    s.BackgroundColor3=Color3.fromRGB(35,35,55); s.BorderSizePixel=0; rowY=rowY+4
+end
+
+local vSrc  =mkRow("📡 Data:",  Color3.fromRGB(100,255,100))
+mkSep()
+local vLv   =mkRow("🎮 Level:", Color3.fromRGB(100,220,255))
+local vMile =mkRow("🎯 Mốc:",   Color3.fromRGB(255,200,60))
+mkSep()
+local v2x   =mkRow("⚡ 2x:",   Color3.fromRGB(255,160,50))
+local v2xT  =mkRow("⏱ Còn:",  Color3.fromRGB(200,200,150))
+mkSep()
+local vQExp =mkRow("📋 Quest:", Color3.fromRGB(150,255,150),16)
+local vAfter=mkRow("📈 Sau:",   Color3.fromRGB(200,200,255))
+mkSep()
+local vKick =mkRow("🔧 Kick:",  Color3.fromRGB(200,200,200))
+rowY=rowY+2
+
+local barBg=Instance.new("Frame",panel)
+barBg.Size=UDim2.new(1,-8,0,12); barBg.Position=UDim2.new(0,4,0,rowY)
+barBg.BackgroundColor3=Color3.fromRGB(18,18,30); barBg.BorderSizePixel=0; C(barBg,4); rowY=rowY+15
+local barFill=Instance.new("Frame",barBg)
+barFill.Size=UDim2.new(0,0,1,0)
+barFill.BackgroundColor3=Color3.fromRGB(80,200,80); barFill.BorderSizePixel=0; C(barFill,4)
+local barLbl=Instance.new("TextLabel",barBg)
+barLbl.Size=UDim2.new(1,0,1,0); barLbl.BackgroundTransparency=1
+barLbl.TextScaled=true; barLbl.Font=Enum.Font.GothamBold; barLbl.ZIndex=2
+barLbl.Text="--/--"; barLbl.TextColor3=Color3.fromRGB(255,255,255)
+
+local alertBox=Instance.new("Frame",panel)
+alertBox.Size=UDim2.new(1,-8,0,36); alertBox.Position=UDim2.new(0,4,0,rowY)
+alertBox.BackgroundColor3=Color3.fromRGB(14,14,26); alertBox.BorderSizePixel=0; C(alertBox,6); rowY=rowY+40
+local alertLbl=Instance.new("TextLabel",alertBox)
+alertLbl.Size=UDim2.new(1,-6,1,-2); alertLbl.Position=UDim2.new(0,3,0,1)
+alertLbl.BackgroundTransparency=1; alertLbl.TextScaled=true
+alertLbl.Font=Enum.Font.GothamBold; alertLbl.TextWrapped=true
+alertLbl.Text="Chưa chạy"; alertLbl.TextColor3=Color3.fromRGB(160,160,180)
+
+local toggleBtn=Instance.new("TextButton",panel)
+toggleBtn.Size=UDim2.new(1,-8,0,26); toggleBtn.Position=UDim2.new(0,4,0,rowY)
+toggleBtn.BackgroundColor3=Color3.fromRGB(0,140,60)
+toggleBtn.Text="▶ Bắt Đầu"; toggleBtn.TextColor3=Color3.fromRGB(255,255,255)
+toggleBtn.TextScaled=true; toggleBtn.Font=Enum.Font.GothamBold; C(toggleBtn,7); rowY=rowY+30
+panel.Size=UDim2.new(0,210,0,rowY+4)
+
+local rh=Instance.new("TextButton",panel)
+rh.Size=UDim2.new(0,12,0,12); rh.Position=UDim2.new(1,-12,1,-12)
+rh.BackgroundColor3=Color3.fromRGB(255,150,0); rh.Text=""
+rh.ZIndex=10; rh.BorderSizePixel=0; C(rh,3)
+local resizing,rSM,rSS=false,nil,nil
+rh.MouseButton1Down:Connect(function()
+    resizing=true; rSM=UIS:GetMouseLocation()
+    rSS=Vector2.new(panel.AbsoluteSize.X,panel.AbsoluteSize.Y)
+end)
+UIS.InputChanged:Connect(function(inp)
+    if not resizing then return end
+    if inp.UserInputType==Enum.UserInputType.MouseMovement then
+        local c=UIS:GetMouseLocation()
+        panel.Size=UDim2.new(0,math.clamp(rSS.X+(c.X-rSM.X),160,440),
+                              0,math.clamp(rSS.Y+(c.Y-rSM.Y),180,600))
+    end
+end)
+UIS.InputEnded:Connect(function(inp)
+    if inp.UserInputType==Enum.UserInputType.MouseButton1 then resizing=false end
+end)
+
+toggleBtn.MouseButton1Click:Connect(function()
+    running=not running
+    if running then
+        toggleBtn.Text="⏹ Dừng"
+        toggleBtn.BackgroundColor3=Color3.fromRGB(150,20,20)
+        dAlert=""; startMonitor()
+    else
+        toggleBtn.Text="▶ Bắt Đầu"
+        toggleBtn.BackgroundColor3=Color3.fromRGB(0,140,60)
+        if loopConn then loopConn:Disconnect() end; dAlert=""
+    end
+end)
+
+task.spawn(function()
+    while not destroyed do
+        task.wait(0.4)
+        vSrc.Text=dSrc
+        vSrc.TextColor3=(dSrc:find("✅") or dSrc:find("OK"))
+            and Color3.fromRGB(80,255,120)
+            or (dSrc:find("Đang") or dSrc:find("Chờ"))
+            and Color3.fromRGB(255,200,50)
+            or Color3.fromRGB(255,100,100)
+
+        vLv.Text=dLevel; vMile.Text=dMile
+        v2x.Text=dIs2x and "✅ Bật" or "❌ Tắt"
+        v2x.TextColor3=dIs2x and Color3.fromRGB(255,180,50) or Color3.fromRGB(100,100,100)
+        v2xT.Text=d2xTime
+        v2xT.TextColor3=dIs2x and Color3.fromRGB(255,220,100) or Color3.fromRGB(80,80,80)
+        vQExp.Text=dQExp
+        vKick.Text=AUTOKICK=="true" and "🔴 Bật" or "🟡 Tắt"
+        vKick.TextColor3=AUTOKICK=="true" and Color3.fromRGB(255,80,80) or Color3.fromRGB(255,200,80)
+
+        local afN=tonumber(dAfter); local msN=tonumber(dMile)
+        if afN and msN then
+            if afN>=msN then vAfter.Text="Lv."..dAfter.." ⚠"; vAfter.TextColor3=Color3.fromRGB(255,80,80)
+            else vAfter.Text="Lv."..dAfter.." ✅"; vAfter.TextColor3=Color3.fromRGB(100,255,150) end
+        else vAfter.Text=dAfter; vAfter.TextColor3=Color3.fromRGB(180,180,180) end
+
+        barFill.Size=UDim2.new(dPct,0,1,0)
+        barFill.BackgroundColor3=dPct>0.85 and Color3.fromRGB(255,80,50)
+            or dPct>0.6 and Color3.fromRGB(255,200,50) or Color3.fromRGB(80,200,80)
+        if dCur~="--" and dMax~="--" then
+            barLbl.Text=string.format("%s/%s (%.0f%%)",dCur,dMax,dPct*100)
+        end
+
+        if dAlert~="" then
+            dBlink=not dBlink
+            alertLbl.Text=dAlert
+            alertLbl.TextColor3=dBlink and Color3.fromRGB(255,60,60) or Color3.fromRGB(255,160,60)
+            alertBox.BackgroundColor3=dBlink and Color3.fromRGB(55,10,10) or Color3.fromRGB(14,14,26)
+        elseif not running then
+            alertLbl.Text="⏸ Đã dừng"
+            alertLbl.TextColor3=Color3.fromRGB(130,130,150)
+            alertBox.BackgroundColor3=Color3.fromRGB(14,14,26)
+        elseif dSafe then
+            alertLbl.Text="✅ An toàn - farm tiếp"
+            alertLbl.TextColor3=Color3.fromRGB(80,220,120)
+            alertBox.BackgroundColor3=Color3.fromRGB(10,22,14)
+        else
+            alertLbl.Text="⚙ Đang kiểm tra..."
+            alertLbl.TextColor3=Color3.fromRGB(160,160,180)
+            alertBox.BackgroundColor3=Color3.fromRGB(14,14,26)
+        end
+    end
+end)
+
+if AUTOSTART=="true" then
+    task.wait(3); running=true
+    toggleBtn.Text="⏹ Dừng"
+    toggleBtn.BackgroundColor3=Color3.fromRGB(150,20,20)
+    startMonitor(); print("[QLPv12] Autostart ON")
+end
+
+print("[Quest Logout V12] AutoKick="..AUTOKICK.." AutoStart="..AUTOSTART)
