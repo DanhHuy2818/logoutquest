@@ -11,7 +11,7 @@
 --   PlayerGui.Main.Guide.* Recommended Quest
 --   PlayerGui.Main.Dialogue.*
 
-local Autostart = "false" -- true = auto start
+local Autostart = "true" -- true = auto start
 local Autokick = "true"  -- true = kick, false = test only
 
 local CHECK_INTERVAL = 0.25
