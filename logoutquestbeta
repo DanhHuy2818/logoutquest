@@ -1,13 +1,16 @@
--- Blox Fruits Quest Logout v14 - clean base
+-- Blox Fruits Quest Logout v15 - fix paths sau update (v30.0.9)
 -- Data confirmed by dump:
--- Level text/value:
---   LocalPlayer.Data.Level OR PlayerGui.Main.Level.Text = "Lv. 223"
+-- Level:
+--   LocalPlayer.Data.Level  (hoac HUDRoot...ExpAndLevel.LevelContainer.LevelTextContainer.Level = "Lv. 1123")
 -- EXP + 2x:
---   PlayerGui.Main.Level.Exp.Text = "502,719/503,737 (2x ends in 0:02:20:29)"
+--   PlayerGui.HUDRoot.Frame.HUD.LowerLeftColumn.AboveAwakeningMeter.ExpAndLevel.BarContainer.Bar.Exp
+--   = "11,472,192/20,744,607 (2x ends in 0:00:58:43)"
 -- Current quest only:
---   PlayerGui.Main.Quest.Container.QuestTitle.Title.Text
---   PlayerGui.Main.Quest.Container.QuestReward.Title.Text
+--   PlayerGui.TrackedQuestFrame.Frame.header.textLabel      = "Defeat 8 Lab Subordinates"
+--   PlayerGui.TrackedQuestFrame.Frame.progress              = "0/8"
+--   PlayerGui.TrackedQuestFrame.Frame.rewards.experience.amount = "25,500,000 EXP"
 -- Ignore:
+--   PlayerGui.Main.Quest.* (xac cu, an)
 --   PlayerGui.Main.Guide.* Recommended Quest
 --   PlayerGui.Main.Dialogue.*
 
@@ -29,7 +32,7 @@ local AUTOKICK = tostring(Autokick):lower()
 
 local MILESTONES = {
     10,15,20,30,40,55,60,75,90,100,105,
-    120,130,150,175,190,210,220,230,240,
+    120,130,150,175,190,210,225,230,
     250,275,300,325,350,375,400,425,450,
     475,500,525,550,575,625,650,675,700,
     725,750,775,800,850,875,900,925,950,
@@ -42,7 +45,7 @@ local MILESTONES = {
     2100,2125,2150,2175,2200,2225,2250,
     2275,2300,2325,2350,2375,2400,2425,
     2450,2475,2500,2525,2550,2575,2600,
-    2625,2650,2675,2700,2725,2750,2775,2800,
+    2625,2650,2675,2700,2725,2800,
 }
 
 local DATA = {
@@ -65,10 +68,11 @@ local DATA = {
 local PATH = {
     dataLevel = nil,
     dataExp = nil,
-    main = nil,
+    expAndLevel = nil,
     levelGui = nil,
     expText = nil,
     questTitle = nil,
+    questProgress = nil,
     questReward = nil,
 }
 
@@ -109,6 +113,8 @@ local function visible(obj)
     while cur and cur ~= game do
         local v = safe(function() return cur.Visible end)
         if v == false then return false end
+        local en = safe(function() return cur.Enabled end)
+        if en == false and cur:IsA("ScreenGui") then return false end
         cur = cur.Parent
     end
     return true
@@ -166,24 +172,6 @@ local function nextMilestone(level)
     return nil
 end
 
-local function activeQuestMilestone(level)
-    if not level then return nil end
-
-    local title = tostring(DATA.questTitle or ""):lower()
-
-    -- Submerged Quest Giver 3 special handling:
-    -- High Disciple overlaps with an older 2675 quest, so its safe stop target is 2725.
-    -- Grand Devotee is the final farm quest; ignore fake 25-level steps and stop before max 2800.
-    if title:find("high disciple", 1, true) then
-        return 2725
-    end
-    if title:find("grand devotee", 1, true) then
-        return MAX_LEVEL
-    end
-
-    return nextMilestone(level)
-end
-
 local function parse2xTime(text)
     text = tostring(text or "")
     local d, h, m, s = text:match("(%d+):(%d+):(%d+):(%d+)")
@@ -207,9 +195,10 @@ local function parseExpBar(text)
     return cur, max, has2x, remain
 end
 
+-- v15: tien do quest nam rieng trong "progress", dang "0/8" (khong con ngoac)
 local function parseQuestProgress(text)
     if not text then return nil, nil end
-    local done, total = tostring(text):match("%((%d+)%s*/%s*(%d+)%)")
+    local done, total = tostring(text):match("(%d+)%s*/%s*(%d+)")
     return tonumber(done), tonumber(total)
 end
 
@@ -230,30 +219,40 @@ local function parseQuestReward(text)
     return best
 end
 
+-- v15: tim object theo chuoi ten, an toan neu giua duong bi thieu
+local function findPath(root, ...)
+    local cur = root
+    for _, n in ipairs({...}) do
+        if not cur then return nil end
+        cur = cur:FindFirstChild(n)
+    end
+    return cur
+end
+
 local function refreshPaths()
     local pg = LP:FindFirstChildOfClass("PlayerGui")
     local data = LP:FindFirstChild("Data")
     PATH.dataLevel = data and data:FindFirstChild("Level") or nil
     PATH.dataExp = data and data:FindFirstChild("Exp") or nil
-    PATH.main = pg and pg:FindFirstChild("Main") or nil
-    PATH.levelGui = PATH.main and PATH.main:FindFirstChild("Level") or nil
-    PATH.expText = PATH.levelGui and PATH.levelGui:FindFirstChild("Exp") or nil
 
-    local quest = PATH.main and PATH.main:FindFirstChild("Quest") or nil
-    local container = quest and quest:FindFirstChild("Container") or nil
-    local qTitleFrame = container and container:FindFirstChild("QuestTitle") or nil
-    local qRewardFrame = container and container:FindFirstChild("QuestReward") or nil
-    PATH.questTitle = qTitleFrame and qTitleFrame:FindFirstChild("Title") or nil
-    PATH.questReward = qRewardFrame and qRewardFrame:FindFirstChild("Title") or nil
+    local eal = findPath(pg, "HUDRoot", "Frame", "HUD", "LowerLeftColumn", "AboveAwakeningMeter", "ExpAndLevel")
+    PATH.expAndLevel = eal
+    PATH.levelGui = findPath(eal, "LevelContainer", "LevelTextContainer", "Level")
+    PATH.expText = findPath(eal, "BarContainer", "Bar", "Exp")
+
+    local qf = findPath(pg, "TrackedQuestFrame", "Frame")
+    PATH.questTitle = findPath(qf, "header", "textLabel")
+    PATH.questProgress = findPath(qf, "progress")
+    PATH.questReward = findPath(qf, "rewards", "experience", "amount")
 end
 
 local function readBoost()
     local total = 0
-    local levelGui = PATH.levelGui
-    if not levelGui then return 0 end
+    local root = PATH.expAndLevel
+    if not root then return 0 end
 
     for _, frameName in ipairs({"FriendBoost", "ExploreBoost"}) do
-        local frame = levelGui:FindFirstChild(frameName)
+        local frame = root:FindFirstChild(frameName)
         local best = 0
         if frame and visible(frame) then
             for _, obj in ipairs(frame:GetDescendants()) do
@@ -304,10 +303,11 @@ local function readLiveData()
     DATA.boost = readBoost()
 
     local qTitle = readText(PATH.questTitle)
+    local qProg = readText(PATH.questProgress)
     local qReward = readText(PATH.questReward)
     if PATH.questTitle and PATH.questReward and visible(PATH.questTitle) and visible(PATH.questReward) then
-        DATA.questTitle = (qTitle and qTitle:gsub("\n", " ")) or "--"
-        DATA.questDone, DATA.questTotal = parseQuestProgress(qTitle)
+        DATA.questTitle = qTitle and (qTitle:gsub("\n", " ")) or "--"
+        DATA.questDone, DATA.questTotal = parseQuestProgress(qProg)
         DATA.questExp = parseQuestReward(qReward)
     else
         DATA.questTitle = "--"
@@ -371,21 +371,15 @@ local function kickNow()
     pcall(function() game:Shutdown() end)
 end
 
-pcall(function()
-    local old = game.CoreGui:FindFirstChild("BFQLv14")
-    if old then old:Destroy() end
-end)
-pcall(function()
-    local old = game.CoreGui:FindFirstChild("BFQLv13")
-    if old then old:Destroy() end
-end)
-pcall(function()
-    local old = game.CoreGui:FindFirstChild("BFQLv12")
-    if old then old:Destroy() end
-end)
+for _, n in ipairs({"BFQLv15", "BFQLv14", "BFQLv13", "BFQLv12"}) do
+    pcall(function()
+        local old = game.CoreGui:FindFirstChild(n)
+        if old then old:Destroy() end
+    end)
+end
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BFQLv14"
+gui.Name = "BFQLv15"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = game.CoreGui
@@ -426,7 +420,7 @@ local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1, -28, 1, 0)
 title.Position = UDim2.new(0, 6, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BFQL v14 " .. (AUTOKICK == "true" and "[K]" or "[T]")
+title.Text = "BFQL v15 " .. (AUTOKICK == "true" and "[K]" or "[T]")
 title.TextColor3 = Color3.fromRGB(255, 220, 90)
 title.Font = Enum.Font.GothamBold
 title.TextScaled = true
@@ -620,7 +614,7 @@ local function updateLogic()
     local lv = DATA.level
     local cur = DATA.expCur
     local max = DATA.expMax
-    local milestone = activeQuestMilestone(lv)
+    local milestone = nextMilestone(lv)
     local gain = totalGainIfQuestDone()
     local need = expToMilestone(lv, cur, max, milestone)
     local after = simulateAfter(lv, cur, max, gain or 0)
@@ -674,7 +668,7 @@ local function updateUi()
     vSrc.Text = STATE.running and STATE.source or "Stopped"
     vSrc.TextColor3 = STATE.safe and Color3.fromRGB(80, 255, 120) or Color3.fromRGB(255, 90, 80)
     vLv.Text = DATA.level and tostring(DATA.level) or "--"
-    vMile.Text = DATA.level and tostring(activeQuestMilestone(DATA.level) or "MAX") or "--"
+    vMile.Text = DATA.level and tostring(nextMilestone(DATA.level) or "MAX") or "--"
     v2x.Text = DATA.is2x and "ON" or "OFF"
     v2x.TextColor3 = DATA.is2x and Color3.fromRGB(255, 180, 80) or Color3.fromRGB(130, 130, 130)
     vBoost.Text = "+" .. tostring(math.floor((DATA.boost or 0) * 100 + 0.5)) .. "%"
@@ -758,4 +752,4 @@ if AUTOSTART == "true" then
     toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 20)
 end
 
-print("[BF Logout v14] AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
+print("[BF Logout v15] AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
