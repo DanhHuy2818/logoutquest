@@ -1,16 +1,11 @@
--- Blox Fruits Quest Logout v15 - fix paths sau update (v30.0.9)
--- Data confirmed by dump:
--- Level:
---   LocalPlayer.Data.Level  (hoac HUDRoot...ExpAndLevel.LevelContainer.LevelTextContainer.Level = "Lv. 1123")
--- EXP + 2x:
---   PlayerGui.HUDRoot.Frame.HUD.LowerLeftColumn.AboveAwakeningMeter.ExpAndLevel.BarContainer.Bar.Exp
---   = "11,472,192/20,744,607 (2x ends in 0:00:58:43)"
--- Current quest only:
---   PlayerGui.TrackedQuestFrame.Frame.header.textLabel      = "Defeat 8 Lab Subordinates"
---   PlayerGui.TrackedQuestFrame.Frame.progress              = "0/8"
---   PlayerGui.TrackedQuestFrame.Frame.rewards.experience.amount = "25,500,000 EXP"
+-- Blox Fruits Quest Logout v14 - clean base
+-- Paths updated for the current Blox Fruits HUD:
+-- Level: PlayerGui.HUDRoot.Frame.HUD.LowerLeftColumn.AboveAwakeningMeter.ExpAndLevel.LevelContainer.LevelTextContainer.Level
+-- EXP + 2x: PlayerGui.HUDRoot.Frame.HUD.LowerLeftColumn.AboveAwakeningMeter.ExpAndLevel.BarContainer.Bar.Exp
+-- Current tracked quest: PlayerGui.TrackedQuestFrame.Frame.header.textLabel
+-- Quest progress: PlayerGui.TrackedQuestFrame.Frame.progress
+-- Quest EXP reward: PlayerGui.TrackedQuestFrame.Frame.rewards.experience.amount
 -- Ignore:
---   PlayerGui.Main.Quest.* (xac cu, an)
 --   PlayerGui.Main.Guide.* Recommended Quest
 --   PlayerGui.Main.Dialogue.*
 
@@ -32,7 +27,7 @@ local AUTOKICK = tostring(Autokick):lower()
 
 local MILESTONES = {
     10,15,20,30,40,55,60,75,90,100,105,
-    120,130,150,175,190,210,225,230,
+    120,130,150,175,190,210,220,230,240,
     250,275,300,325,350,375,400,425,450,
     475,500,525,550,575,625,650,675,700,
     725,750,775,800,850,875,900,925,950,
@@ -68,12 +63,13 @@ local DATA = {
 local PATH = {
     dataLevel = nil,
     dataExp = nil,
-    expAndLevel = nil,
+    main = nil,
     levelGui = nil,
     expText = nil,
     questTitle = nil,
     questProgress = nil,
     questReward = nil,
+    boostRoot = nil,
 }
 
 local STATE = {
@@ -113,8 +109,6 @@ local function visible(obj)
     while cur and cur ~= game do
         local v = safe(function() return cur.Visible end)
         if v == false then return false end
-        local en = safe(function() return cur.Enabled end)
-        if en == false and cur:IsA("ScreenGui") then return false end
         cur = cur.Parent
     end
     return true
@@ -195,10 +189,11 @@ local function parseExpBar(text)
     return cur, max, has2x, remain
 end
 
--- v15: tien do quest nam rieng trong "progress", dang "0/8" (khong con ngoac)
 local function parseQuestProgress(text)
     if not text then return nil, nil end
-    local done, total = tostring(text):match("(%d+)%s*/%s*(%d+)")
+    text = tostring(text)
+    -- Supports both "0/8" and "(0/8)".
+    local done, total = text:match("%(?(%d+)%s*/%s*(%d+)%)?")
     return tonumber(done), tonumber(total)
 end
 
@@ -219,40 +214,55 @@ local function parseQuestReward(text)
     return best
 end
 
--- v15: tim object theo chuoi ten, an toan neu giua duong bi thieu
-local function findPath(root, ...)
-    local cur = root
-    for _, n in ipairs({...}) do
-        if not cur then return nil end
-        cur = cur:FindFirstChild(n)
-    end
-    return cur
-end
-
 local function refreshPaths()
     local pg = LP:FindFirstChildOfClass("PlayerGui")
     local data = LP:FindFirstChild("Data")
+
+    -- Level value and EXP value still exist under LocalPlayer.Data.
     PATH.dataLevel = data and data:FindFirstChild("Level") or nil
     PATH.dataExp = data and data:FindFirstChild("Exp") or nil
 
-    local eal = findPath(pg, "HUDRoot", "Frame", "HUD", "LowerLeftColumn", "AboveAwakeningMeter", "ExpAndLevel")
-    PATH.expAndLevel = eal
-    PATH.levelGui = findPath(eal, "LevelContainer", "LevelTextContainer", "Level")
-    PATH.expText = findPath(eal, "BarContainer", "Bar", "Exp")
+    -- Updated HUD level and EXP bar.
+    local hudRoot = pg and pg:FindFirstChild("HUDRoot")
+    local hudRootFrame = hudRoot and hudRoot:FindFirstChild("Frame")
+    local hud = hudRootFrame and hudRootFrame:FindFirstChild("HUD")
+    local lowerLeft = hud and hud:FindFirstChild("LowerLeftColumn")
+    local aboveAwakening = lowerLeft and lowerLeft:FindFirstChild("AboveAwakeningMeter")
+    local expAndLevel = aboveAwakening and aboveAwakening:FindFirstChild("ExpAndLevel")
 
-    local qf = findPath(pg, "TrackedQuestFrame", "Frame")
-    PATH.questTitle = findPath(qf, "header", "textLabel")
-    PATH.questProgress = findPath(qf, "progress")
-    PATH.questReward = findPath(qf, "rewards", "experience", "amount")
+    local levelContainer = expAndLevel and expAndLevel:FindFirstChild("LevelContainer")
+    local levelTextContainer = levelContainer and levelContainer:FindFirstChild("LevelTextContainer")
+    PATH.levelGui = levelTextContainer and levelTextContainer:FindFirstChild("Level") or nil
+
+    local barContainer = expAndLevel and expAndLevel:FindFirstChild("BarContainer")
+    local bar = barContainer and barContainer:FindFirstChild("Bar")
+    PATH.expText = bar and bar:FindFirstChild("Exp") or nil
+
+    -- Current tracked quest (not Main.Quest's older/different quest UI).
+    local tracked = pg and pg:FindFirstChild("TrackedQuestFrame")
+    local questFrame = tracked and tracked:FindFirstChild("Frame")
+    local header = questFrame and questFrame:FindFirstChild("header")
+    local progress = questFrame and questFrame:FindFirstChild("progress")
+    local rewards = questFrame and questFrame:FindFirstChild("rewards")
+    local experience = rewards and rewards:FindFirstChild("experience")
+
+    PATH.questTitle = header and (header:FindFirstChild("textLabel") or header:FindFirstChild("textLabel", true)) or nil
+    PATH.questProgress = progress
+    PATH.questReward = experience and experience:FindFirstChild("amount") or nil
+
+    -- Boost indicators may remain in legacy Main.Level or elsewhere in PlayerGui.
+    local main = pg and pg:FindFirstChild("Main")
+    local legacyLevel = main and main:FindFirstChild("Level")
+    PATH.boostRoot = legacyLevel or pg
 end
 
 local function readBoost()
     local total = 0
-    local root = PATH.expAndLevel
-    if not root then return 0 end
+    local boostRoot = PATH.boostRoot
+    if not boostRoot then return 0 end
 
     for _, frameName in ipairs({"FriendBoost", "ExploreBoost"}) do
-        local frame = root:FindFirstChild(frameName)
+        local frame = boostRoot:FindFirstChild(frameName, true)
         local best = 0
         if frame and visible(frame) then
             for _, obj in ipairs(frame:GetDescendants()) do
@@ -268,6 +278,7 @@ local function readBoost()
 
     return math.max(0, total / 100)
 end
+
 
 local function readLiveData()
     local level = tonumber(readValue(PATH.dataLevel))
@@ -303,11 +314,16 @@ local function readLiveData()
     DATA.boost = readBoost()
 
     local qTitle = readText(PATH.questTitle)
-    local qProg = readText(PATH.questProgress)
+    local qProgress = readText(PATH.questProgress)
     local qReward = readText(PATH.questReward)
     if PATH.questTitle and PATH.questReward and visible(PATH.questTitle) and visible(PATH.questReward) then
-        DATA.questTitle = qTitle and (qTitle:gsub("\n", " ")) or "--"
-        DATA.questDone, DATA.questTotal = parseQuestProgress(qProg)
+        DATA.questTitle = (qTitle and qTitle:gsub("\n", " ")) or "--"
+
+        -- Updated HUD stores progress separately as "0/8".
+        DATA.questDone, DATA.questTotal = parseQuestProgress(qProgress)
+        if DATA.questDone == nil or DATA.questTotal == nil then
+            DATA.questDone, DATA.questTotal = parseQuestProgress(qTitle)
+        end
         DATA.questExp = parseQuestReward(qReward)
     else
         DATA.questTitle = "--"
@@ -371,15 +387,21 @@ local function kickNow()
     pcall(function() game:Shutdown() end)
 end
 
-for _, n in ipairs({"BFQLv15", "BFQLv14", "BFQLv13", "BFQLv12"}) do
-    pcall(function()
-        local old = game.CoreGui:FindFirstChild(n)
-        if old then old:Destroy() end
-    end)
-end
+pcall(function()
+    local old = game.CoreGui:FindFirstChild("BFQLv14")
+    if old then old:Destroy() end
+end)
+pcall(function()
+    local old = game.CoreGui:FindFirstChild("BFQLv13")
+    if old then old:Destroy() end
+end)
+pcall(function()
+    local old = game.CoreGui:FindFirstChild("BFQLv12")
+    if old then old:Destroy() end
+end)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BFQLv15"
+gui.Name = "BFQLv14"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = game.CoreGui
@@ -420,7 +442,7 @@ local title = Instance.new("TextLabel", header)
 title.Size = UDim2.new(1, -28, 1, 0)
 title.Position = UDim2.new(0, 6, 0, 0)
 title.BackgroundTransparency = 1
-title.Text = "BFQL v15 " .. (AUTOKICK == "true" and "[K]" or "[T]")
+title.Text = "BFQL v14 " .. (AUTOKICK == "true" and "[K]" or "[T]")
 title.TextColor3 = Color3.fromRGB(255, 220, 90)
 title.Font = Enum.Font.GothamBold
 title.TextScaled = true
@@ -752,4 +774,4 @@ if AUTOSTART == "true" then
     toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 20)
 end
 
-print("[BF Logout v15] AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
+print("[BF Logout v14] AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
