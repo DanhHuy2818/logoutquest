@@ -1,10 +1,10 @@
--- Blox Fruits Quest Logout v14 - clean base
+-- Blox Fruits Quest Logout v16 - updated HUD + mute + low effects
 -- Paths updated for the current Blox Fruits HUD:
--- Level: PlayerGui.HUDRoot.Frame.HUD.LowerLeftColumn.AboveAwakeningMeter.ExpAndLevel.LevelContainer.LevelTextContainer.Level
--- EXP + 2x: PlayerGui.HUDRoot.Frame.HUD.LowerLeftColumn.AboveAwakeningMeter.ExpAndLevel.BarContainer.Bar.Exp
--- Current tracked quest: PlayerGui.TrackedQuestFrame.Frame.header.textLabel
--- Quest progress: PlayerGui.TrackedQuestFrame.Frame.progress
--- Quest EXP reward: PlayerGui.TrackedQuestFrame.Frame.rewards.experience.amount
+-- Level/EXP values: LocalPlayer.Data.Level and LocalPlayer.Data.Exp
+-- HUD Level: PlayerGui.HUDRoot.Root.HUD.CoreSafeArea.LeftColumn.ExpAndLevel.Content.Level
+-- HUD EXP: PlayerGui.HUDRoot.Root.HUD.CoreSafeArea.LeftColumn.ExpAndLevel.Content.Bar.Exp
+-- Quest: PlayerGui.HUDRoot.Root.HUD.CoreSafeArea.QuestWindow.Title_1
+-- Quest reward: PlayerGui.HUDRoot.Root.HUD.CoreSafeArea.QuestWindow.Reward_Experience
 -- Ignore:
 --   PlayerGui.Main.Guide.* Recommended Quest
 --   PlayerGui.Main.Dialogue.*
@@ -229,33 +229,23 @@ local function refreshPaths()
     PATH.dataLevel = data and data:FindFirstChild("Level") or nil
     PATH.dataExp = data and data:FindFirstChild("Exp") or nil
 
-    -- Updated HUD level and EXP bar.
+    -- Current HUD after the recent Blox Fruits update.
     local hudRoot = pg and pg:FindFirstChild("HUDRoot")
-    local hudRootFrame = hudRoot and hudRoot:FindFirstChild("Frame")
-    local hud = hudRootFrame and hudRootFrame:FindFirstChild("HUD")
-    local lowerLeft = hud and hud:FindFirstChild("LowerLeftColumn")
-    local aboveAwakening = lowerLeft and lowerLeft:FindFirstChild("AboveAwakeningMeter")
-    local expAndLevel = aboveAwakening and aboveAwakening:FindFirstChild("ExpAndLevel")
-
-    local levelContainer = expAndLevel and expAndLevel:FindFirstChild("LevelContainer")
-    local levelTextContainer = levelContainer and levelContainer:FindFirstChild("LevelTextContainer")
-    PATH.levelGui = levelTextContainer and levelTextContainer:FindFirstChild("Level") or nil
-
-    local barContainer = expAndLevel and expAndLevel:FindFirstChild("BarContainer")
-    local bar = barContainer and barContainer:FindFirstChild("Bar")
+    local root = hudRoot and hudRoot:FindFirstChild("Root")
+    local hud = root and root:FindFirstChild("HUD")
+    local safeArea = hud and hud:FindFirstChild("CoreSafeArea")
+    local leftColumn = safeArea and safeArea:FindFirstChild("LeftColumn")
+    local expAndLevel = leftColumn and leftColumn:FindFirstChild("ExpAndLevel")
+    local content = expAndLevel and expAndLevel:FindFirstChild("Content")
+    PATH.levelGui = content and content:FindFirstChild("Level") or nil
+    local bar = content and content:FindFirstChild("Bar")
     PATH.expText = bar and bar:FindFirstChild("Exp") or nil
 
-    -- Current tracked quest (not Main.Quest's older/different quest UI).
-    local tracked = pg and pg:FindFirstChild("TrackedQuestFrame")
-    local questFrame = tracked and tracked:FindFirstChild("Frame")
-    local header = questFrame and questFrame:FindFirstChild("header")
-    local progress = questFrame and questFrame:FindFirstChild("progress")
-    local rewards = questFrame and questFrame:FindFirstChild("rewards")
-    local experience = rewards and rewards:FindFirstChild("experience")
-
-    PATH.questTitle = header and (header:FindFirstChild("textLabel") or header:FindFirstChild("textLabel", true)) or nil
-    PATH.questProgress = progress
-    PATH.questReward = experience and experience:FindFirstChild("amount") or nil
+    -- Current quest is now inside HUDRoot.Root.HUD.CoreSafeArea.QuestWindow.
+    local questWindow = safeArea and safeArea:FindFirstChild("QuestWindow")
+    PATH.questTitle = questWindow and questWindow:FindFirstChild("Title_1") or nil
+    PATH.questProgress = PATH.questTitle -- progress is included in Title_1, e.g. "(2/9)"
+    PATH.questReward = questWindow and questWindow:FindFirstChild("Reward_Experience") or nil
 
     -- Boost indicators may remain in legacy Main.Level or elsewhere in PlayerGui.
     local main = pg and pg:FindFirstChild("Main")
@@ -394,8 +384,47 @@ local function kickNow()
     pcall(function() game:Shutdown() end)
 end
 
+-- Mute all game audio and reduce visual effects for lower client load.
+local SoundService = game:GetService("SoundService")
+local Lighting = game:GetService("Lighting")
+local function applyLowEffects()
+    pcall(function() SoundService.Volume = 0 end)
+    for _, obj in ipairs(game:GetDescendants()) do
+        if obj:IsA("Sound") then
+            pcall(function() obj.Volume = 0; obj:Stop() end)
+        elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+            or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+            pcall(function() obj.Enabled = false end)
+        elseif obj:IsA("PostEffect") then
+            pcall(function() obj.Enabled = false end)
+        elseif obj:IsA("BasePart") then
+            pcall(function()
+                if obj.Material == Enum.Material.Neon then obj.Material = Enum.Material.SmoothPlastic end
+                obj.CastShadow = false
+            end)
+        end
+    end
+    pcall(function()
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 100000
+        Lighting.Brightness = 1
+    end)
+end
+applyLowEffects()
+-- Also mute/disable newly-created sounds and visual emitters after game updates/spawns.
+game.DescendantAdded:Connect(function(obj)
+    if obj:IsA("Sound") then
+        pcall(function() obj.Volume = 0; obj:Stop() end)
+    elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
+        or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
+        pcall(function() obj.Enabled = false end)
+    elseif obj:IsA("PostEffect") then
+        pcall(function() obj.Enabled = false end)
+    end
+end)
+
 pcall(function()
-    local old = game.CoreGui:FindFirstChild("BFQLv14")
+    local old = game.CoreGui:FindFirstChild("BFQLv15")
     if old then old:Destroy() end
 end)
 pcall(function()
@@ -408,7 +437,7 @@ pcall(function()
 end)
 
 local gui = Instance.new("ScreenGui")
-gui.Name = "BFQLv14"
+gui.Name = "BFQLv16"
 gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.Parent = game.CoreGui
@@ -781,4 +810,4 @@ if AUTOSTART == "true" then
     toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 20)
 end
 
-print("[BF Logout v14] AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
+print("[BF Logout v16] HUD updated | Mute+LowEffects ON | AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
