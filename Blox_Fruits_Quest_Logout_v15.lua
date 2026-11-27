@@ -1,4 +1,4 @@
--- Blox Fruits Quest Logout v17 - updated HUD + hard mute + low effects
+-- Blox Fruits Quest Logout v18 - updated HUD + hard mute + low effects
 -- Paths updated for the current Blox Fruits HUD:
 -- Level/EXP values: LocalPlayer.Data.Level and LocalPlayer.Data.Exp
 -- HUD Level: PlayerGui.HUDRoot.Root.HUD.CoreSafeArea.LeftColumn.ExpAndLevel.Content.Level
@@ -384,70 +384,6 @@ local function kickNow()
     pcall(function() game:Shutdown() end)
 end
 
--- Strong client-side mute: master volume, every Sound/SoundGroup,
--- newly-added sounds, and periodic re-application if the game resets them.
-local SoundService = game:GetService("SoundService")
-local Lighting = game:GetService("Lighting")
-
-local function muteSound(obj)
-    if obj:IsA("Sound") then
-        pcall(function()
-            obj.Volume = 0
-            obj:Stop()
-        end)
-    elseif obj:IsA("SoundGroup") then
-        pcall(function() obj.Volume = 0 end)
-    end
-end
-
-local function applyLowEffects()
-    pcall(function() SoundService.Volume = 0 end)
-    pcall(function() SoundService:StopAllSounds() end)
-
-    for _, obj in ipairs(game:GetDescendants()) do
-        muteSound(obj)
-        if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
-            or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-            pcall(function() obj.Enabled = false end)
-        elseif obj:IsA("PostEffect") then
-            pcall(function() obj.Enabled = false end)
-        elseif obj:IsA("BasePart") then
-            pcall(function()
-                if obj.Material == Enum.Material.Neon then obj.Material = Enum.Material.SmoothPlastic end
-                obj.CastShadow = false
-            end)
-        end
-    end
-    pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 100000
-        Lighting.Brightness = 1
-    end)
-end
-
-applyLowEffects()
-
--- Catch sounds as soon as they are inserted, including sounds parented later.
-game.DescendantAdded:Connect(function(obj)
-    muteSound(obj)
-    if obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Beam")
-        or obj:IsA("Fire") or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-        pcall(function() obj.Enabled = false end)
-    elseif obj:IsA("PostEffect") then
-        pcall(function() obj.Enabled = false end)
-    end
-end)
-
--- Some game scripts change Sound.Volume/Play again after spawning; keep re-muting.
-task.spawn(function()
-    while not STATE.destroyed do
-        pcall(function() SoundService.Volume = 0 end)
-        for _, obj in ipairs(game:GetDescendants()) do
-            muteSound(obj)
-        end
-        task.wait(0.35)
-    end
-end)
 
 pcall(function()
     local old = game.CoreGui:FindFirstChild("BFQLv15")
@@ -836,4 +772,4 @@ if AUTOSTART == "true" then
     toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 20)
 end
 
-print("[BF Logout v17] HUD updated | HardMute+LowEffects ON | AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
+print("[BF Logout v18] HUD updated | HardMute+LowEffects ON | AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
