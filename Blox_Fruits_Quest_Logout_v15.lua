@@ -1,4 +1,4 @@
--- Blox Fruits Quest Logout v18 - updated HUD + hard mute + low effects
+-- Blox Fruits Quest Logout v21 - quest-local EXP estimate
 -- Paths updated for the current Blox Fruits HUD:
 -- Level/EXP values: LocalPlayer.Data.Level and LocalPlayer.Data.Exp
 -- HUD Level: PlayerGui.HUDRoot.Root.HUD.CoreSafeArea.LeftColumn.ExpAndLevel.Content.Level
@@ -65,6 +65,10 @@ local DATA = {
     lastExpCur = nil,
     lastLevel = nil,
     lastMobGain = 0,
+    questStartTotalExp = nil,
+    questStartDone = 0,
+    questMobAvg = nil,
+    lastQuestDone = nil,
 }
 
 local PATH = {
@@ -163,6 +167,20 @@ end
 local function expNeeded(level)
     level = tonumber(level) or 1
     return math.floor((2 * (level ^ 2.3)) + 84)
+end
+
+-- EXP accumulated before each level; lets us measure mob EXP even if a kill
+-- causes a level-up and the visible EXP bar resets.
+local EXP_PREFIX = {[1] = 0}
+for level = 1, MAX_LEVEL do
+    EXP_PREFIX[level + 1] = EXP_PREFIX[level] + expNeeded(level)
+end
+
+local function absoluteExp(level, cur)
+    if not (level and cur and level >= 1 and level <= MAX_LEVEL) then
+        return nil
+    end
+    return (EXP_PREFIX[level] or 0) + cur
 end
 
 local function nextMilestone(level)
@@ -296,7 +314,7 @@ local function readLiveData()
         if DATA.lastExpCur and DATA.lastLevel == DATA.level then
             local diff = cur - DATA.lastExpCur
             if diff > 0 and (not DATA.questExp or diff < DATA.questExp * 0.45) then
-                DATA.lastMobGain = math.max(DATA.lastMobGain or 0, diff)
+                DATA.lastMobGain = diff
             elseif diff < 0 then
                 DATA.lastMobGain = 0
             end
@@ -329,10 +347,32 @@ local function readLiveData()
         DATA.questExp = nil
     end
 
-    if DATA.lastQuestTitle ~= DATA.questTitle then
+    -- A quest can repeat with the exact same title. Detect the new cycle when
+    -- its progress rolls back (e.g. 8/8 -> 0/8), otherwise the previous quest
+    -- reward would be counted as mob EXP and inflate the next prediction.
+    local titleChanged = DATA.lastQuestTitle ~= DATA.questTitle
+    local progressReset = DATA.questDone ~= nil
+        and DATA.lastQuestDone ~= nil
+        and DATA.questDone < DATA.lastQuestDone
+
+    if titleChanged or progressReset then
         DATA.lastQuestTitle = DATA.questTitle
         DATA.lastMobGain = 0
+        DATA.questMobAvg = nil
+        DATA.questStartDone = DATA.questDone or 0
+        DATA.questStartTotalExp = absoluteExp(DATA.level, DATA.expCur)
+    elseif DATA.questStartTotalExp and DATA.questDone and DATA.questDone > (DATA.questStartDone or 0) then
+        local nowTotal = absoluteExp(DATA.level, DATA.expCur)
+        local killsDone = DATA.questDone - (DATA.questStartDone or 0)
+        if nowTotal and killsDone > 0 then
+            local earnedDuringQuest = math.max(0, nowTotal - DATA.questStartTotalExp)
+            local average = earnedDuringQuest / killsDone
+            if average > 0 then
+                DATA.questMobAvg = average
+            end
+        end
     end
+    DATA.lastQuestDone = DATA.questDone
 end
 
 local function expToMilestone(level, cur, max, milestone)
@@ -353,9 +393,12 @@ local function totalGainIfQuestDone()
 
     local rewardGain = math.floor(questExp * mult)
     local remainingMob = 0
-    if DATA.questDone and DATA.questTotal and DATA.lastMobGain and DATA.lastMobGain > 0 then
+    if DATA.questDone and DATA.questTotal then
         local left = math.max(0, DATA.questTotal - DATA.questDone)
-        remainingMob = DATA.lastMobGain * left
+        -- Prefer the average EXP actually earned per counted kill in this quest.
+        -- This avoids multiplying one unusually large kill by every remaining mob.
+        local perMob = DATA.questMobAvg or DATA.lastMobGain or 0
+        remainingMob = math.floor(perMob * left)
     end
     return rewardGain + remainingMob
 end
@@ -772,4 +815,4 @@ if AUTOSTART == "true" then
     toggleBtn.BackgroundColor3 = Color3.fromRGB(150, 20, 20)
 end
 
-print("[BF Logout v18] HUD updated | HardMute+LowEffects ON | AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
+print("[BF Logout v21] Quest-local EXP estimate | AutoKick=" .. AUTOKICK .. " AutoStart=" .. AUTOSTART)
